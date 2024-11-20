@@ -1,0 +1,281 @@
+"""
+Spotify Most Streamed Songs Dataset
+Source: Kaggle (https://www.kaggle.com/datasets/meeratif/spotify-most-streamed-songs-of-all-time/code)
+Author: meer atif magsi
+Date Accessed: 11/20/24
+"""
+
+import csv
+from collections import defaultdict
+
+class Song:
+    """
+    Represents a single song from the Spotify Most Streamed Songs dataset.
+
+    Attributes:
+        artist_title (str): Combined artist and title in 'Artist - Title' format
+        artist (str): Name of the artist
+        title (str): Name of the song
+        streams (int): Total number of streams for the song
+        daily_streams (int): Average daily streams for the song
+
+    Raises:
+        ValueError: If the artist_title format is invalid or stream counts are negative
+    """
+    def __init__(self, artist_title, streams, daily_streams):
+        """
+        Initialize a Song object by parsing artist, title, and stream information.
+
+        Args:
+            artist_title (str): Combined artist and title (e.g., 'Artist Name - Song Title')
+            streams (str or int): Total number of streams
+            daily_streams (str or int): Average daily streams
+        """
+        self.artist_title = artist_title.strip()
+        parts = self.artist_title.split(' - ')
+        
+        if len(parts) != 2:
+            raise ValueError(f"Invalid artist_title format: {artist_title}")
+        
+        self.artist = parts[0].strip()
+        self.title = parts[1].strip()
+        
+        # Convert streams to integers
+        self.streams = int(str(streams).replace(',', ''))
+        self.daily_streams = int(str(daily_streams).replace(',', ''))
+        
+        if self.streams < 0 or self.daily_streams < 0:
+            raise ValueError("Stream counts cannot be negative")
+
+    def __str__(self):
+        """
+        String representation of the song.
+
+        Returns:
+            str: Formatted string with artist, title, and total streams
+        """
+        return f"{self.artist} - {self.title} ({self.streams:,})"
+
+class MusicLibrary:
+    """
+    A library for analyzing Spotify's most streamed songs dataset.
+
+    Provides functionality for loading, sorting, searching, and analyzing song data.
+
+    Attributes:
+        songs (list): List of Song objects loaded from the dataset
+        stats (defaultdict): Dictionary to store various song and artist statistics
+    """
+    def __init__(self):
+        """
+        Initialize an empty MusicLibrary with no songs loaded.
+        """
+        self.songs = []
+        self.stats = defaultdict(dict)
+
+    def load_from_csv(self, filename):
+        """
+        Load song data from a CSV file.
+
+        Args:
+            filename (str): Path to the CSV file containing song data
+
+        Note:
+            Skips rows with invalid data to ensure data integrity
+        """
+        with open(filename, 'r', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                try:
+                    song = Song(
+                        row['Artist and Title'],
+                        row['Streams'],
+                        row['Daily']
+                    )
+                    self.songs.append(song)
+                except ValueError:
+                    continue  # Skip invalid rows
+
+    def merge_sort_by_streams(self, arr=None, reverse=False):
+        """
+        Perform merge sort on songs based on total streams.
+
+        Args:
+            arr (list, optional): List of songs to sort. Defaults to entire library.
+            reverse (bool, optional): Sort in descending order if True. Defaults to False.
+
+        Returns:
+            list: Sorted list of songs by total streams
+        """
+        if arr is None:
+            arr = self.songs.copy()
+        
+        if len(arr) <= 1:
+            return arr
+
+        mid = len(arr) // 2
+        left = self.merge_sort_by_streams(arr[:mid], reverse)
+        right = self.merge_sort_by_streams(arr[mid:], reverse)
+        
+        # Merge sorted halves
+        merged = []
+        i = j = 0
+        while i < len(left) and j < len(right):
+            if reverse:
+                condition = left[i].streams > right[j].streams
+            else:
+                condition = left[i].streams < right[j].streams
+                
+            if condition:
+                merged.append(left[i])
+                i += 1
+            else:
+                merged.append(right[j])
+                j += 1
+
+        merged.extend(left[i:])
+        merged.extend(right[j:])
+        return merged
+
+    def selection_sort_by_daily(self, reverse=False):
+        """
+        Perform selection sort on songs based on daily streams.
+
+        Args:
+            reverse (bool, optional): Sort in descending order if True. Defaults to False.
+
+        Returns:
+            list: Sorted list of songs by daily streams
+        """
+        arr = self.songs.copy()
+        n = len(arr)
+        
+        for i in range(n):
+            extreme_idx = i
+            for j in range(i + 1, n):
+                if reverse:
+                    condition = arr[j].daily_streams > arr[extreme_idx].daily_streams
+                else:
+                    condition = arr[j].daily_streams < arr[extreme_idx].daily_streams
+                    
+                if condition:
+                    extreme_idx = j
+                    
+            arr[i], arr[extreme_idx] = arr[extreme_idx], arr[i]
+        
+        return arr
+
+    def binary_search_artist(self, target_artist):
+        """
+        Perform binary search to find all songs by a specific artist.
+
+        Args:
+            target_artist (str): Name of the artist to search for
+
+        Returns:
+            list: List of songs by the specified artist, or an empty list if no songs found
+        """
+        sorted_songs = sorted(self.songs, key=lambda x: x.artist.lower())
+        target_artist = target_artist.lower()
+        
+        # Binary search for first occurrence
+        left, right = 0, len(sorted_songs) - 1
+        first_occurrence = -1
+        
+        while left <= right:
+            mid = (left + right) // 2
+            current_artist = sorted_songs[mid].artist.lower()
+            
+            if current_artist == target_artist:
+                first_occurrence = mid
+                right = mid - 1  # Look for earlier occurrences
+            elif current_artist < target_artist:
+                left = mid + 1
+            else:
+                right = mid - 1
+        
+        if first_occurrence == -1:
+            return []
+        
+        # Collect all songs by the artist
+        matches = []
+        i = first_occurrence
+        while (i < len(sorted_songs) and 
+               sorted_songs[i].artist.lower() == target_artist):
+            matches.append(sorted_songs[i])
+            i += 1
+            
+        return matches
+
+    def get_artist_stats(self, artist_name):
+        """
+        Calculate comprehensive statistics for a specific artist.
+
+        Args:
+            artist_name (str): Name of the artist to analyze
+
+        Returns:
+            dict: A dictionary containing artist statistics including:
+                - total_songs: Number of songs by the artist
+                - total_streams: Total streams across all songs
+                - average_daily_streams: Mean daily streams
+                - top_song: Title of the song with the most total streams
+                - top_daily_song: Title of the song with the most daily streams
+        """
+        artist_songs = self.binary_search_artist(artist_name)
+        
+        if not artist_songs:
+            return {}
+            
+        stats = {
+            'total_songs': len(artist_songs),
+            'total_streams': sum(song.streams for song in artist_songs),
+            'average_daily_streams': sum(song.daily_streams for song in artist_songs) / len(artist_songs),
+            'top_song': max(artist_songs, key=lambda x: x.streams).title,
+            'top_daily_song': max(artist_songs, key=lambda x: x.daily_streams).title
+        }
+        
+        return stats
+
+def main():
+    """
+    Demonstrate the functionality of the MusicLibrary class.
+
+    Loads data from a CSV file, performs sorting and analysis,
+    and prints example results for selected artists.
+    """
+    # Initialize library
+    library = MusicLibrary()
+    
+    # Load data
+    library.load_from_csv("moststreamed.csv")
+    print(f"\nLoaded {len(library.songs)} songs successfully")
+    
+    # Demonstrate Merge Sort (by total streams)
+    print("\nTop 5 Songs by Total Streams (Merge Sort):")
+    sorted_by_streams = library.merge_sort_by_streams(reverse=True)
+    for idx, song in enumerate(sorted_by_streams[:5], 1):
+        print(f"{idx}. {song}")
+    
+    # Demonstrate Selection Sort (by daily streams)
+    print("\nTop 5 Songs by Daily Streams (Selection Sort):")
+    sorted_by_daily = library.selection_sort_by_daily(reverse=True)
+    for idx, song in enumerate(sorted_by_daily[:5], 1):
+        print(f"{idx}. {song.artist} - {song.title} (Daily Streams: {song.daily_streams:,})")
+    
+    # Example artist analysis
+    print("\nAnalyzing top artists...")
+    for artist in ["The Weeknd", "Ed Sheeran", "Lewis Capaldi"]:
+        print(f"\nStatistics for {artist}:")
+        stats = library.get_artist_stats(artist)
+        if stats:
+            for key, value in stats.items():
+                if isinstance(value, (int, float)):
+                    print(f"{key}: {value:,}")
+                else:
+                    print(f"{key}: {value}")
+        else:
+            print(f"No songs found for {artist}")
+
+if __name__ == "__main__":
+    main()
